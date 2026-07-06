@@ -31,7 +31,7 @@ logger = logging.getLogger("backend.app")
 async def lifespan(app: FastAPI):
     """
     Handles application startup and shutdown events.
-    Initializes database tables on start.
+    Initializes database tables and pre-warms ML models on start.
     """
     logger.info("Initializing application database tables...")
     try:
@@ -50,6 +50,18 @@ async def lifespan(app: FastAPI):
             logger.info("comment column added successfully.")
     except Exception as e:
         logger.error(f"Critical error initializing database tables: {e}")
+
+    # Pre-warm ML models at startup so the first /generate request is not slow.
+    # On Render free tier, lazy loading on first request combines cold-start time
+    # (30-60s) with model download/load time (60-120s), causing client timeouts.
+    logger.info("Pre-warming ML models (ThemeExtractor + ConversationGenerator)...")
+    try:
+        from backend.routes.generate import theme_extractor, conversation_generator
+        theme_extractor.initialize_model()
+        conversation_generator.initialize_model()
+        logger.info("ML models pre-warm complete.")
+    except Exception as e:
+        logger.warning(f"ML model pre-warm failed (fallback templates will be used): {e}")
         
     yield
     

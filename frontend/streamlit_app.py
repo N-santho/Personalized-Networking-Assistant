@@ -22,6 +22,13 @@ st.markdown("""
 # API Endpoint Configuration
 BACKEND_URL = "https://personalized-networking-assistant-nx1h.onrender.com"
 
+# Timeout constants (in seconds)
+# Render free tier cold starts can take 30-60s; ML model loading adds another 60-90s
+TIMEOUT_GENERATE = 180   # /generate: DistilBERT + GPT-2 load on first call
+TIMEOUT_FACTCHECK = 20   # /factcheck: lightweight Wikipedia API call
+TIMEOUT_HISTORY   = 15   # /history:  simple DB read
+TIMEOUT_FEEDBACK  = 10   # /feedback: simple DB write
+
 # Inject premium design CSS
 st.markdown("""
     <style>
@@ -115,7 +122,7 @@ def submit_feedback_signal(record_id: int, liked_status: bool, index: int):
             "liked": liked_status,
             "comment": None
         }
-        res = requests.post(f"{BACKEND_URL}/feedback", json=payload, timeout=5)
+        res = requests.post(f"{BACKEND_URL}/feedback", json=payload, timeout=TIMEOUT_FEEDBACK)
         if res.status_code == 200:
             st.toast(f"Feedback logged successfully for starter #{index + 1}!")
         else:
@@ -126,6 +133,12 @@ def submit_feedback_signal(record_id: int, liked_status: bool, index: int):
 # Story 1: Application Setup and Configuration
 st.markdown("<h1 class='title-text'>🤝 Personalized Networking Assistant</h1>", unsafe_allow_html=True)
 st.write("Generate AI-powered conversation starters for professional networking events.")
+st.info(
+    "⏳ **First request may take up to 2–3 minutes.** "
+    "The backend runs on Render's free tier, which sleeps after inactivity. "
+    "ML models (DistilBERT + GPT-2) are also loaded on the first call. "
+    "Subsequent requests will be much faster."
+)
 st.markdown("---")
 
 # Main Content Layout - Split into Generator & Fact Check Panel
@@ -169,7 +182,7 @@ with col_left:
                         "event_description": event_desc_input.strip(),
                         "interests": interests_input.strip()
                     }
-                    response = requests.post(f"{BACKEND_URL}/generate", json=payload, timeout=30)
+                    response = requests.post(f"{BACKEND_URL}/generate", json=payload, timeout=TIMEOUT_GENERATE)
                     
                     if response.status_code == 201:
                         result_data = response.json()
@@ -229,7 +242,7 @@ with col_right:
             with st.spinner("Checking references..."):
                 try:
                     payload = {"topic": fact_query.strip()}
-                    res = requests.post(f"{BACKEND_URL}/factcheck", json=payload, timeout=10)
+                    res = requests.post(f"{BACKEND_URL}/factcheck", json=payload, timeout=TIMEOUT_FACTCHECK)
                     
                     if res.status_code == 200:
                         st.session_state.fact_check_result = res.json()
@@ -264,7 +277,7 @@ history_col, feedback_col = st.columns(2, gap="large")
 # Fetch database logs for Story 5 & 6
 db_history = []
 try:
-    response = requests.get(f"{BACKEND_URL}/history?limit=30", timeout=10)
+    response = requests.get(f"{BACKEND_URL}/history?limit=30", timeout=TIMEOUT_HISTORY)
     if response.status_code == 200:
         db_history = response.json()
 except Exception:
