@@ -13,7 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from backend.config import settings
 from backend.database import engine, Base
-from backend.routes import (
+from backend.routes import 
     generate, 
     factcheck, 
     history, 
@@ -52,16 +52,18 @@ async def lifespan(app: FastAPI):
         logger.error(f"Critical error initializing database tables: {e}")
 
     # Pre-warm ML models at startup so the first /generate request is not slow.
-    # On Render free tier, lazy loading on first request combines cold-start time
-    # (30-60s) with model download/load time (60-120s), causing client timeouts.
-    logger.info("Pre-warming ML models (ThemeExtractor + ConversationGenerator)...")
-    try:
-        from backend.routes.generate import theme_extractor, conversation_generator
-        theme_extractor.initialize_model()
-        conversation_generator.initialize_model()
-        logger.info("ML models pre-warm complete.")
-    except Exception as e:
-        logger.warning(f"ML model pre-warm failed (fallback templates will be used): {e}")
+    # NOTE: Disabled on Render free tier (512 MB RAM) — loading DistilBERT + GPT-2
+    # simultaneously at startup causes OOM before the server can accept requests.
+    # The frontend uses a 180s timeout on /generate to handle lazy-load latency instead.
+    # Uncomment below only if running on a machine with ≥2 GB available RAM.
+    # logger.info("Pre-warming ML models (ThemeExtractor + ConversationGenerator)...")
+    # try:
+    #     from backend.routes.generate import theme_extractor, conversation_generator
+    #     theme_extractor.initialize_model()
+    #     conversation_generator.initialize_model()
+    #     logger.info("ML models pre-warm complete.")
+    # except Exception as e:
+    #     logger.warning(f"ML model pre-warm failed (fallback templates will be used): {e}")
         
     yield
     
