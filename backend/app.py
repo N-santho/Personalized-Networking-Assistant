@@ -13,7 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from backend.config import settings
 from backend.database import engine, Base
-from backend.routes import 
+from backend.routes import (
     generate, 
     factcheck, 
     history, 
