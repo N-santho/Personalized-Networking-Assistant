@@ -1,12 +1,16 @@
 import streamlit as st
 import requests
+import os
 from datetime import datetime
 
 def _safe_error_detail(response: requests.Response) -> str:
     """Safely extract an error detail from a response that may not be JSON
     (e.g. Render returns an HTML 502 page during cold-start)."""
     try:
-        return response.json().get("detail", response.text)
+        data = response.json()
+        if isinstance(data, dict):
+            return data.get("detail", response.text)
+        return str(data)
     except Exception:
         return response.text or f"HTTP {response.status_code}"
 
@@ -28,7 +32,11 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # API Endpoint Configuration
-BACKEND_URL = "https://personalized-networking-assistant-nx1h.onrender.com"
+# Defaults to localhost backend URL for local development/testing.
+# Can be overridden by setting the BACKEND_URL environment variable in production.
+BACKEND_URL = os.getenv("BACKEND_URL", "http://127.0.0.1:8000").rstrip("/")
+if BACKEND_URL and not BACKEND_URL.startswith(("http://", "https://")):
+    BACKEND_URL = f"http://{BACKEND_URL}"
 
 # Timeout constants (in seconds)
 # Render free tier cold starts can take 30-60s; ML model loading adds another 60-90s
@@ -120,7 +128,7 @@ if "last_generated_id" not in st.session_state:
     st.session_state.last_generated_id = None
 
 # Helper functions
-def submit_feedback_signal(record_id: int, liked_status: bool, index: int):
+def submit_feedback_signal(record_id: int, liked_status: bool, index: int, comment: str = None):
     """
     Submits user rating validation thumbs signal back to the API database service.
     """
@@ -128,25 +136,20 @@ def submit_feedback_signal(record_id: int, liked_status: bool, index: int):
         payload = {
             "id": record_id,
             "liked": liked_status,
-            "comment": None
+            "comment": comment if comment and comment.strip() else None
         }
         res = requests.post(f"{BACKEND_URL}/feedback", json=payload, timeout=TIMEOUT_FEEDBACK)
         if res.status_code == 200:
             st.toast(f"Feedback logged successfully for starter #{index + 1}!")
         else:
-            st.error(f"Failed to submit feedback: {res.json().get('detail')}")
+            st.error(f"Failed to submit feedback: {_safe_error_detail(res)}")
     except Exception as e:
         st.error(f"Error submitting feedback: {str(e)}")
 
 # Story 1: Application Setup and Configuration
 st.markdown("<h1 class='title-text'>🤝 Personalized Networking Assistant</h1>", unsafe_allow_html=True)
 st.write("Generate AI-powered conversation starters for professional networking events.")
-st.info(
-    "⏳ **First request may take up to 2–3 minutes.** "
-    "The backend runs on Render's free tier, which sleeps after inactivity. "
-    "ML models (DistilBERT + GPT-2) are also loaded on the first call. "
-    "Subsequent requests will be much faster."
-)
+st.caption("⏳ Note: First request may take 1–2 min while the backend wakes up on Render’s free tier.")
 st.markdown("---")
 
 # Main Content Layout - Split into Generator & Fact Check Panel
@@ -198,10 +201,16 @@ with col_left:
                         st.session_state.generated_topics = result_data.get("themes", [])
                         st.session_state.generated_starters = result_data.get("conversation_starters", [])
                         st.success("✅ Conversation starters generated successfully!")
+                    elif response.status_code == 502:
+                        st.error("⏳ Backend is still starting up. Please wait 30 seconds and try again.")
+                    elif response.status_code == 500:
+                        st.error("❌ Server error: " + _safe_error_detail(response))
                     else:
                         st.error(f"API Error ({response.status_code}): {_safe_error_detail(response)}")
+                except requests.exceptions.Timeout:
+                    st.error("⏳ Request timed out. The backend may still be loading models — please try again in a moment.")
                 except Exception as e:
-                    st.error(f"Failed to communicate with backend service: {str(e)}")
+                    st.error(f"Could not reach the backend. Please try again shortly.")
 
     # Story 3: Results Display and Feedback System
     if st.session_state.generated_topics or st.session_state.generated_starters:
@@ -221,14 +230,23 @@ with col_left:
         for idx, starter in enumerate(st.session_state.generated_starters):
             with st.container():
                 st.markdown(f"<div class='starter-card'>💡 {starter}</div>", unsafe_allow_html=True)
+                
+                # Add text input for optional feedback comment
+                comment_val = st.text_input(
+                    label="Add optional feedback comment:",
+                    placeholder="Provide optional feedback comment here...",
+                    key=f"comment_input_{st.session_state.last_generated_id}_{idx}",
+                    label_visibility="collapsed"
+                )
+                
                 btn_col1, btn_col2, _ = st.columns([1.2, 1.2, 7.6])
 
                 with btn_col1:
                     if st.button("👍 Like", key=f"like_{st.session_state.last_generated_id}_{idx}"):
-                        submit_feedback_signal(st.session_state.last_generated_id, True, idx)
+                        submit_feedback_signal(st.session_state.last_generated_id, True, idx, comment_val)
                 with btn_col2:
                     if st.button("👎 Dislike", key=f"dislike_{st.session_state.last_generated_id}_{idx}"):
-                        submit_feedback_signal(st.session_state.last_generated_id, False, idx)
+                        submit_feedback_signal(st.session_state.last_generated_id, False, idx, comment_val)
                 st.write("")
 
 with col_right:
@@ -339,11 +357,12 @@ with feedback_col:
                 
             icon = "👍 Like" if item["liked"] else "👎 Dislike"
             
+            comment_text = f"<br>**Comment:** {item['comment']}" if item.get("comment") else ""
             with st.container():
                 st.markdown(
                     f"<div class='history-box'>"
                     f"<span style='color:#9ca3af; font-size:0.85rem;'>⏰ {formatted_time}</span><br>"
-                    f"**Feedback Signal:** {icon}<br>"
+                    f"**Feedback Signal:** {icon}{comment_text}<br>"
                     f"**Suggestion:**<br>",
                     unsafe_allow_html=True
                 )
