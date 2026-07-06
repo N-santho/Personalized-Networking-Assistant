@@ -20,7 +20,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # API Endpoint Configuration
-BACKEND_URL = "http://127.0.0.1:8000"
+BACKEND_URL = "https://personalized-networking-assistant-nx1h.onrender.com"
 
 # Inject premium design CSS
 st.markdown("""
