@@ -2,6 +2,14 @@ import streamlit as st
 import requests
 from datetime import datetime
 
+def _safe_error_detail(response: requests.Response) -> str:
+    """Safely extract an error detail from a response that may not be JSON
+    (e.g. Render returns an HTML 502 page during cold-start)."""
+    try:
+        return response.json().get("detail", response.text)
+    except Exception:
+        return response.text or f"HTTP {response.status_code}"
+
 # Page configuration
 st.set_page_config(
     page_title="Personalized Networking Assistant",
@@ -191,7 +199,7 @@ with col_left:
                         st.session_state.generated_starters = result_data.get("conversation_starters", [])
                         st.success("✅ Conversation starters generated successfully!")
                     else:
-                        st.error(f"API Error ({response.status_code}): {response.json().get('detail')}")
+                        st.error(f"API Error ({response.status_code}): {_safe_error_detail(response)}")
                 except Exception as e:
                     st.error(f"Failed to communicate with backend service: {str(e)}")
 
@@ -252,7 +260,7 @@ with col_right:
                         }
                     else:
                         st.session_state.fact_check_result = {
-                            "error": f"Server error: {res.json().get('detail')}"
+                            "error": f"Server error ({res.status_code}): {_safe_error_detail(res)}"
                         }
                 except Exception as e:
                     st.session_state.fact_check_result = {"error": str(e)}
