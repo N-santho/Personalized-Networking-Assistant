@@ -33,6 +33,8 @@ class Settings(BaseSettings):
             self.DATABASE_URL = os.environ["DATABASE_URL"]
         if "FORCE_FALLBACK" in os.environ:
             self.FORCE_FALLBACK = os.environ["FORCE_FALLBACK"].lower() in ("true", "1", "yes", "on")
+        elif os.environ.get("RENDER") == "true":
+            self.FORCE_FALLBACK = True
 
     @property
     def is_sqlite_in_memory(self) -> bool:

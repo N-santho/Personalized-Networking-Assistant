@@ -88,8 +88,10 @@ async def generate_starters_endpoint(
         )
 
     except Exception as e:
-        logger.exception("An error occurred during themes and starters generation.")
+        import traceback
+        traceback.print_exc()
+        logger.exception(e)
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Internal generator error: {str(e)}"
+            status_code=500,
+            detail=str(e)
         )
